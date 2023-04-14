@@ -99,6 +99,7 @@ REQUIRED = [
     "PyYAML>=5.4.1",
     "tabulate",
     "termcolor",
+    "websockets",
 ]
 
 # Optional packages
