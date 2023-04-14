@@ -141,7 +141,7 @@ async def _send_array(x: np.ndarray, uri: str, timeout: int = 5, interval: int =
     # TODO: establish a handshake between the frontend client through the backend server
     # For now, we just wait a bit and hope that the *front-end* has loaded and is ready to receive
     # the array through the websocket.
-    time.sleep(0.25)
+    time.sleep(0.5)
 
     # TODO: ping the server to see if it is ready to receive the array
     start_time = time.time()
