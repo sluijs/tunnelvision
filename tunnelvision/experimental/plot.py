@@ -55,19 +55,22 @@ class Axis:
         if w <= 256 or h <= 256:
             raise ValueError("The figure size must be at least 256x256 pixels.")
 
-        uri = f"http://{LOCALHOST_NAME}:{port or self.port}?port={port or self.port}"
+        if isinstance(port, int) and port > 0 and port < 65536:
+            self.port = port
+
+        uri = f"http://{LOCALHOST_NAME}:{self.port}?port={self.port}"
         self.process = subprocess.Popen(
             [self.server_path, "--port", str(self.port), "-d", str(self.dist_path)],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
 
+        # Wait for the server to start, and send  the array
+        ws_uri = f"ws://{LOCALHOST_NAME}:{self.port}/ws"
+        _ = asyncio.create_task(_send_array(x, ws_uri))
+
         # Display the viewer
         display(IFrame(uri, width=w + 62, height=h + 2))
-
-        # Wait for the server to start, and send  the array
-        ws_uri = f"ws://{LOCALHOST_NAME}:{port or self.port}/ws"
-        _ = asyncio.create_task(_send_array(x, ws_uri))
 
         # Return the object with the process, so that it can be closed
         return self
