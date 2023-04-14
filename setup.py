@@ -138,6 +138,7 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     packages=find_packages(exclude=("configs", "tests", "tests.*")),
+    package_data={"tunnelvision": ["bin/**/*"]},
     python_requires=">=3.6",
     install_requires=REQUIRED,
     license="GNU",
