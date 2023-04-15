@@ -42,10 +42,12 @@ class Axis:
                     break
 
             if time.time() - start_time > timeout:
-                raise TimeoutError("The front-end client did not respond in time.")
+                print("ERROR: front-end client did not respond in time.")
+                return
 
         if self.process.poll() == 0:
-            raise RuntimeError("The server was terminated.")
+            print("ERROR: front-end client terminated unexpectedly.")
+            return
 
         uri = f"ws://{LOCALHOST_NAME}:{self.port}/ws"
         async with websockets.connect(uri) as websocket:
