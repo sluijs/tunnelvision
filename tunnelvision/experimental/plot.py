@@ -12,6 +12,8 @@ from IPython.display import IFrame, display
 
 from tunnelvision.definitions import ROOT_DIR
 
+__all__ = ["Axis", "show"]
+
 # Name of the localhost.
 LOCALHOST_NAME = os.getenv("TUNNELVISION_HOST", "localhost")
 
@@ -31,12 +33,38 @@ class Axis:
         self.dist_path = os.path.join(ROOT_DIR, "bin/dist")
         self.process = None
 
+    async def _send_array(self, x: np.ndarray, *, timeout: int = 5):
+        start_time = time.time()
+        while self.process.poll() is None:
+            output = self.process.stdout.readline()
+            if output:
+                if "--- pinged" in output.strip().decode():
+                    break
+
+            if time.time() - start_time > timeout:
+                raise TimeoutError("The front-end client did not respond in time.")
+
+        if self.process.poll() == 0:
+            raise RuntimeError("The server was terminated.")
+
+        uri = f"ws://{LOCALHOST_NAME}:{self.port}/ws"
+        async with websockets.connect(uri) as websocket:
+            # Send the header with a prefix signaling that it is JSON
+            header = "JSON" + json.dumps({"shape": x.shape, "dtype": x.dtype.name})
+            header = header.encode("utf-8")
+            await websocket.send(header)
+
+            # Send the array
+            await websocket.send(x.tobytes())
+            await websocket.close(reason="Goodbye!")
+
     def show(
         self,
         x: np.ndarray,
         *,
         figsize: Tuple[int, int] = (512, 512),
-        port=None,
+        port: int = None,
+        timeout: int = 5,
     ):
         """Display a multi-dimensional array.
 
@@ -65,12 +93,11 @@ class Axis:
             stderr=subprocess.PIPE,
         )
 
-        # Wait for the server to start, and send  the array
-        ws_uri = f"ws://{LOCALHOST_NAME}:{self.port}/ws"
-        _ = asyncio.create_task(_send_array(x, ws_uri))
-
         # Display the viewer
         display(IFrame(uri, width=w + 62, height=h + 2))
+
+        # Wait for the server to start, and send  the array
+        _ = asyncio.create_task(self._send_array(x, timeout=timeout))
 
         # Return the object with the process, so that it can be closed
         return self
@@ -125,7 +152,7 @@ def _get_first_available_port(initial: int = 49152, final: int = 65535) -> int:
     for port in range(initial, final):
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  # create a socket object
-            result = s.bind((LOCALHOST_NAME, port))  # Bind to the port  # noqa: F841
+            _ = s.bind((LOCALHOST_NAME, port))  # Bind to the port  # noqa: F841
             s.close()
             # rich.print(f"Found open port: {port}")
             return port
@@ -135,36 +162,3 @@ def _get_first_available_port(initial: int = 49152, final: int = 65535) -> int:
     raise OSError(
         "All ports from {} to {} are in use. Please close a port.".format(initial, final - 1)
     )
-
-
-async def _send_array(x: np.ndarray, uri: str, timeout: int = 5, interval: int = 0.1):
-    # TODO: establish a handshake between the frontend client through the backend server
-    # For now, we just wait a bit and hope that the *front-end* has loaded and is ready to receive
-    # the array through the websocket.
-    time.sleep(0.5)
-
-    # TODO: ping the server to see if it is ready to receive the array
-    start_time = time.time()
-    while True:
-        # Try to send the array, and if it fails, wait a bit and try again
-        try:
-            async with websockets.connect(uri) as websocket:
-                # Send the header with a prefix signaling that it is JSON
-                header = "JSON" + json.dumps({"shape": x.shape, "dtype": x.dtype.name})
-                header = header.encode("utf-8")
-                await websocket.send(header)
-
-                # Send the array
-                await websocket.send(x.tobytes())
-                await websocket.close(reason="Goodbye!")
-
-            # Break out of the loop, since the array was sent
-            break
-
-        except ConnectionRefusedError:
-            pass
-
-        if time.time() - start_time > timeout:
-            raise TimeoutError("The server did not start in time.")
-
-        time.sleep(interval)
