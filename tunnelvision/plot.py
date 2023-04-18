@@ -226,13 +226,11 @@ def _get_first_available_port(start: int = 49152, end: int = 65535) -> int:
     Returns:
         port: the first open port in the range
     """
-    # rich.print(f"Trying to find an open port in ({start}, {end}). ", end="")
     for port in range(start, end):
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  # create a socket object
             _ = s.bind((config.hostname, port))  # Bind to the port  # noqa: F841
             s.close()
-            # rich.print(f"Found open port: {port}")
             return port
         except OSError:
             pass
