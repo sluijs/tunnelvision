@@ -67,6 +67,9 @@ class Axis:
         if not isinstance(x, np.ndarray):
             raise TypeError("Only numpy arrays are supported.")
 
+        if x.dtype not in [np.int8, np.int16, np.int32, np.uint8, np.uint16, np.uint32, np.float32]:
+            raise TypeError("Supported dtypes are =< 32 bit (unsigned) integers/floating points")
+
         if x.ndim != 5:
             raise ValueError("Only 5-dimensional arrays are supported [BxZxHxWxC].")
 
