@@ -100,6 +100,7 @@ REQUIRED = [
     "tabulate",
     "termcolor",
     "websockets",
+    "shortuuid",
 ]
 
 # Optional packages
