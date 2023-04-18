@@ -99,20 +99,6 @@ class Axis:
             else:
                 raise TimeoutError(f"Server did not respond in {config.timeout} seconds.")
 
-    # def _block_until_ready(self):
-    #     """Block until the server is ready to receive messages."""
-    #     # Wait up to 5 seconds for the process to output a line
-    #     ready, _, _ = select.select([state.process.stdout], [], [], config.timeout)
-    #     if ready:
-    #         # Read the line from stdout
-    #         line = state.process.stdout.readline().decode().strip()
-    #         if "--- tunnelvision ---" in line:
-    #             return True
-
-    #     else:
-    #         # Timeout occurred
-    #         raise TimeoutError("Timed out waiting for server to start.")
-
     async def _wait_for_handshake(self):
         """Wait for the front-end to connect to the server."""
 
@@ -202,7 +188,7 @@ def show(x: np.ndarray, **kwargs):
         x (np.ndarray): The array to display.
     """
     ax = Axis()
-    return ax.show(x, **kwargs)
+    display(ax.imshow(x=x, **kwargs))
 
 
 def _is_ipython_session() -> bool:
