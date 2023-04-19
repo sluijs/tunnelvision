@@ -14,7 +14,7 @@ from tunnelvision.definitions import ROOT_DIR
 from tunnelvision.server import start, state
 from tunnelvision.utils import Viewport
 
-__all__ = ["Axis", "show"]
+__all__ = ["Axes", "show"]
 
 
 # `True` if the user is running code in an iPython session.
@@ -22,7 +22,7 @@ __all__ = ["Axis", "show"]
 _IS_IPYTHON_SESSION = None
 
 
-class Axis:
+class Axes:
     def __init__(self, *, figsize: Tuple[int, int] = (512, 512)) -> None:
         if not _is_ipython_session():
             raise RuntimeError("Tunnelvision can only be used in an IPython session within Chrome.")
@@ -35,11 +35,8 @@ class Axis:
             )
             dist_path = os.path.join(ROOT_DIR, "bin", "dist")
 
-            start(server_path, state.port, dist_path)
-
-            # Ping the front-end client to make sure it is running
             # NB: this function will block until the server is ready or timeout
-            # self._block_until_ready()
+            start(server_path, state.port, dist_path)
 
         # Wait for the front-end to connect to the server
         self.handshake = asyncio.Future()
@@ -48,7 +45,7 @@ class Axis:
         h, w = figsize
         self.hash = uuid()
         self.uri = f"http://{config.hostname}:{state.port}"
-        self.viewport = Viewport(self.uri, width=w + 62, height=h + 2, hash=self.hash, axis=self)
+        self.viewport = Viewport(self.uri, width=w + 62, height=h + 2, hash=self.hash, axes=self)
 
     def imshow(
         self,
@@ -74,7 +71,7 @@ class Axis:
             raise ValueError("Only 5-dimensional arrays are supported [BxZxHxWxC].")
 
         if state.process.poll() is not None:
-            raise RuntimeError("Server has stopped running after Axis creation.")
+            raise RuntimeError("Server has stopped running after Axes creation.")
 
         if self.handshake.done() and (self.handshake.cancelled() or self.handshake.exception()):
             raise RuntimeError("Handshake with front-end failed.")
@@ -184,14 +181,33 @@ class Axis:
             raise task.exception()
 
 
-def show(x: np.ndarray, **kwargs):
+def imshow(x: np.ndarray, ax: Axes = None, **kwargs):
     """Display a multi-dimensional array.
 
     Args:
         x (np.ndarray): The array to display.
+        ax: The Axes object to use.
     """
-    ax = Axis()
-    display(ax.imshow(x=x, **kwargs))
+    if ax is None:
+        ax = Axes()
+
+    if hasattr(x, "__tunnelvision__"):
+        x, kwargs = x.__tunnelvision__(**kwargs)
+    else:
+        x = np.asarray(x)
+
+    return ax.imshow(x=x, **kwargs)
+
+
+def show(x: np.generic, ax: Axes = None, **kwargs):
+    """Display a multi-dimensional array.
+
+    Args:
+        x (np.generic): The array to display.
+        ax: The Axes object to use.
+    """
+
+    display(imshow(x=x, ax=ax, **kwargs))
 
 
 def _is_ipython_session() -> bool:

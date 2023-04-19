@@ -25,18 +25,18 @@ class Viewport(IFrame):
         width: Union[int, str],
         height: Union[int, str],
         extras: Iterable[str] = None,
-        axis=None,
+        axes=None,
         **kwargs,
     ):
-        self.axis = axis
+        self.axes = axes
         super().__init__(src, width, height, extras, **kwargs)
 
     def _repr_html_(self):
         # TODO: see if we can move side-effect out of this method
-        if self.axis:
-            self.axis.handshake = asyncio.Future()
-            task = asyncio.create_task(self.axis._wait_for_handshake())
-            task.add_done_callback(self.axis._handshake_callback)
+        if self.axes:
+            self.axes.handshake = asyncio.Future()
+            task = asyncio.create_task(self.axes._wait_for_handshake())
+            task.add_done_callback(self.axes._handshake_callback)
 
         return super()._repr_html_()
 
