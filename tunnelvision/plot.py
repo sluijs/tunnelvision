@@ -1,68 +1,71 @@
 import asyncio
 import json
-import os
-import socket
 from typing import Tuple
 
 import numpy as np
-import websockets
-from IPython.display import display
+from IPython.display import IFrame, display
 from shortuuid import uuid
 
 from tunnelvision.config import config
-from tunnelvision.definitions import ROOT_DIR
-from tunnelvision.server import start, state
-from tunnelvision.utils import Viewport
+from tunnelvision.server import auto_connect, auto_start, send_message, state
+from tunnelvision.utils import handle_task_exception, is_ipython_session
 
-__all__ = ["Axes", "show"]
-
-
-# `True` if the user is running code in an iPython session.
-# This is required to be able to use the viewer.
-_IS_IPYTHON_SESSION = None
+__all__ = ["Axes", "imshow", "show"]
 
 
 class Axes:
     def __init__(self, *, figsize: Tuple[int, int] = (512, 512)) -> None:
-        if not _is_ipython_session():
-            raise RuntimeError("Tunnelvision can only be used in an IPython session within Chrome.")
+        """Create a 2D plot.
 
-        # Start the server if it is not already running
+        Args:
+            figsize (Tuple[int, int], optional): The size of the plot. Defaults to (512, 512).
+                Plot dimensions are in pixels, and do not include the toolbar.
+        """
+        if not is_ipython_session():
+            raise RuntimeError("Tunnelvision can only be used in an IPython session.")
+
         if not state.is_running:
-            server_path = os.path.join(ROOT_DIR, "bin", "tunnelvision-server")
-            state.port = (
-                config.port if isinstance(config.port, int) else _get_first_available_port()
-            )
-            dist_path = os.path.join(ROOT_DIR, "bin", "dist")
+            auto_start()
 
-            # NB: this function will block until the server is ready or timeout
-            start(server_path, state.port, dist_path)
+        if state.websocket is None:
+            task = asyncio.create_task(auto_connect())
+            task.add_done_callback(handle_task_exception)
 
-        # Wait for the front-end to connect to the server
-        self.handshake = asyncio.Future()
+        # Create a handshake for clients
+        self._hash = uuid()
+        self._handshake = asyncio.Future()
+        state.handshakes[self._hash] = self._handshake
+
+        # Add the handshake to the queue
+        self._queue = asyncio.Queue()
+        self._consumer = None
 
         # Define the uri for the viewport
         h, w = figsize
-        self.hash = uuid()
         self.uri = f"http://{config.hostname}:{state.port}"
-        self.viewport = Viewport(self.uri, width=w + 62, height=h + 2, hash=self.hash, axes=self)
+        self._viewport = IFrame(self.uri, width=w + 62, height=h + 2, hash=self._hash)
 
     def imshow(
         self,
         x: np.ndarray,
         *,
-        metadata: dict = {},
         config: dict = {},
+        cmap: str = None,
+        metadata: dict = {},
+        **kwargs,
     ):
         """Display a multi-dimensional array.
 
         Args:
-            x (np.ndarray): The array to display.
-            figsize (Tuple[int, int]): The figure size in pixels.
-            port (int): The port to use for the viewer.
+            x (np.ndarray): The 5D array to display.
+            config (dict, optional): The configuration for the viewport. Defaults to {}.
+            cmap (str, optional): The colormap to use. Defaults to None. Use `seg` for segmentation.
+            metadata (dict, optional): The metadata for the viewport. Defaults to {}.
         """
-        if not isinstance(x, np.ndarray):
-            raise TypeError("Only numpy arrays are supported.")
+        if hasattr(x, "__tunnelvision__"):
+            x, kwargs = x.__tunnelvision__(config=config, cmap=cmap, metadata=metadata, **kwargs)
+        else:
+            x = np.asarray(x)
 
         if x.dtype not in [np.int8, np.int16, np.int32, np.uint8, np.uint16, np.uint32, np.float32]:
             raise TypeError("Supported dtypes are =< 32 bit (unsigned) integers/floating points")
@@ -73,112 +76,89 @@ class Axes:
         if state.process.poll() is not None:
             raise RuntimeError("Server has stopped running after Axes creation.")
 
-        if self.handshake.done() and (self.handshake.cancelled() or self.handshake.exception()):
-            raise RuntimeError("Handshake with front-end failed.")
+        if cmap is not None:
+            # TODO: Add support for other built-in colormaps, random colormaps, and custom colormaps
+            if cmap not in ["seg"]:
+                raise ValueError(
+                    f"Colormap {cmap} is not supported. Hint: use `seg` for segmentation maps."
+                )
 
-        # Queue the array to be sent to the viewer
-        task = asyncio.create_task(self._send_view(x=x, config=config, metadata=metadata))
-        task.add_done_callback(self._send_callback)
+            config = {**config, "mode": "lut"}
 
-        return self.viewport
+        # Queue the array to be send to the viewer
+        task = asyncio.create_task(self._produce(x=x, config=config, metadata=metadata))
+        task.add_done_callback(handle_task_exception)
+
+        return self
 
     def show(self):
         """Display the Viewport."""
 
-        display(self.viewport)
+        display(self)
 
-    def ping(self):
-        request = b"HEAD / HTTP/1.1\r\nHost: server-url\r\n\r\n"
-        with socket.create_connection(
-            (config.hostname, state.port), timeout=config.timeout
-        ) as sock:
-            sock.sendall(request)
-            response = sock.recv(1024)
-            if response:
-                return True
-            else:
-                raise TimeoutError(f"Server did not respond in {config.timeout} seconds.")
-
-    async def _wait_for_handshake(self):
-        """Wait for the front-end to connect to the server."""
-
-        async def _handshake():
-            uri = f"ws://{state.hostname}:{state.port}/ws"
-            async with websockets.connect(uri) as websocket:
-                # Wait for the front-end to connect
-                # Do not timeout here, because the front-end can only connect after iframe loads
-                while True:
-                    try:
-                        msg = await websocket.recv()
-                        msg = json.loads(msg)
-
-                        if msg.get("hash", None) == self.hash and msg.get("connected", False):
-                            self.handshake.set_result(True)
-
-                            await websocket.close(reason="--- verified handshake from Python")
-                            break
-                    except Exception as e:
-                        self.handshake.set_exception(e)
-
-        try:
-            await asyncio.wait_for(_handshake(), timeout=config.timeout)
-        except Exception as e:
-            self.handshake.set_exception(e)
-            print("Handshake with front-end failed.")
-
-    async def _send_view(
+    async def _produce(
         self,
         *,
         x: np.ndarray = None,
         config: dict = {},
         metadata: dict = {},
     ):
-        """Send a WebSocket message to the front-end client."""
+        """Send a multi-dimensional array to the viewport.
 
-        uri = f"ws://{state.hostname}:{state.port}/ws"
-        async with websockets.connect(uri) as websocket:
-            try:
-                # Wait for the front-end to connect to the server
-                await self.handshake
+        Args:
+            x (np.ndarray, optional): The 5D array to display. Defaults to None.
+            config (dict, optional): The configuration for the viewport. Defaults to {}.
+            metadata (dict, optional): The metadata for the viewport. Defaults to {}.
+        """
+        # Wait for the handshake to complete
+        await self._handshake
 
-                # Send the message in JSON forma
-                msg = {
-                    "hash": self.hash,
-                    "config": config,
-                    "metadata": metadata,
-                }
+        # Send the header
+        key = uuid()
+        msg = {
+            "hash": self._hash,
+            "key": key,
+            "config": config,
+            "metadata": metadata,
+        }
 
-                if isinstance(x, np.ndarray):
-                    msg["shape"] = x.shape
-                    msg["dtype"] = x.dtype.name
+        if isinstance(x, np.ndarray):
+            msg["shape"] = x.shape
+            msg["dtype"] = x.dtype.name
 
-                await websocket.send(json.dumps(msg))
+        self._queue.put_nowait(send_message(json.dumps(msg)))
 
-                # Send the array
-                if isinstance(x, np.ndarray):
-                    await websocket.send(self.hash.encode() + x.tobytes())
+        # Send the array (hash + key + array)
+        if isinstance(x, np.ndarray):
+            self._queue.put_nowait(send_message(self._hash.encode() + key.encode() + x.tobytes()))
 
-                await websocket.close(reason="--- sent view from Python")
-                return True
-            except Exception as e:
-                self.handshake.set_exception(e)
-                return False
+        # Start the consumer if it is not already running
+        if self._consumer is None or self._consumer.done():
+            self._consumer = asyncio.create_task(self._consume())
+            self._consumer.add_done_callback(handle_task_exception)
 
-    @staticmethod
-    def _handshake_callback(task: asyncio.Task):
-        if task.cancelled():
-            raise RuntimeError("Could not complete handshake with front-end, task was cancelled.")
+    async def _consume(self):
+        """Consume the queue."""
 
-        if task.exception() is not None:
-            raise task.exception()
+        while state.websocket.open and not self._queue.empty():
+            task = await self._queue.get()
+            await task
 
-    @staticmethod
-    def _send_callback(task: asyncio.Task):
-        if task.cancelled():
-            raise RuntimeError("Could not send view to front-end, task was cancelled.")
+            self._queue.task_done()
 
-        if task.exception() is not None:
-            raise task.exception()
+    def _repr_html_(self):
+        """Display the Viewport."""
+
+        return self._viewport._repr_html_()
+
+    def __repr__(self) -> str:
+        """Return a string representation of the Axes."""
+        nl = "\n"
+        nltb = "\n  "
+        return (
+            f"{self.__class__.__name__}({nltb}uri={self.uri}?hash={self._hash},{nltb}"
+            f"height={self._viewport.height - 14},{nltb}width={self._viewport.width - 74},{nl})"
+        )
 
 
 def imshow(x: np.ndarray, ax: Axes = None, **kwargs):
@@ -190,11 +170,6 @@ def imshow(x: np.ndarray, ax: Axes = None, **kwargs):
     """
     if ax is None:
         ax = Axes()
-
-    if hasattr(x, "__tunnelvision__"):
-        x, kwargs = x.__tunnelvision__(**kwargs)
-    else:
-        x = np.asarray(x)
 
     return ax.imshow(x=x, **kwargs)
 
@@ -208,50 +183,3 @@ def show(x: np.generic, ax: Axes = None, **kwargs):
     """
 
     display(imshow(x=x, ax=ax, **kwargs))
-
-
-def _is_ipython_session() -> bool:
-    """Returns if the python is an iPython session.
-
-    Adapted from
-    https://discourse.jupyter.org/t/find-out-if-my-code-runs-inside-a-notebook-or-jupyter-lab/6935/3
-    """
-    global _IS_IPYTHON_SESSION
-    if _IS_IPYTHON_SESSION is not None:
-        return _IS_IPYTHON_SESSION
-
-    is_ipython_session = None
-    try:
-        from IPython import get_ipython
-
-        ip = get_ipython()
-        is_ipython_session = ip is not None
-    except ImportError:
-        # iPython is not installed
-        is_ipython_session = False
-    _IS_IPYTHON_SESSION = is_ipython_session
-    return _IS_IPYTHON_SESSION
-
-
-def _get_first_available_port(start: int = 49152, end: int = 65535) -> int:
-    """Gets the first open port in a specified range of port numbers. Taken
-    from https://github.com/gradio-app/gradio/blob/main/gradio/networking.py.
-    More reading:
-    https://stackoverflow.com/questions/19196105/how-to-check-if-a-network-port-is-open
-    Args:
-        start: the start value in the range of port numbers
-        end: end (exclusive) value in the range of port numbers,
-            should be greater than `start`
-    Returns:
-        port: the first open port in the range
-    """
-    for port in range(start, end):
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  # create a socket object
-            _ = s.bind((config.hostname, port))  # Bind to the port  # noqa: F841
-            s.close()
-            return port
-        except OSError:
-            pass
-
-    raise OSError("All ports from {} to {} are in use. Please close a port.".format(start, end - 1))

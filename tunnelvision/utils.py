@@ -1,12 +1,17 @@
 import asyncio
-from typing import Iterable, Union
 
-from IPython.display import IFrame
+from tunnelvision.logger import logger
 
 __all__ = [
     "Singleton",
-    "Viewport",
+    "is_ipython_session",
+    "handle_task_exception",
 ]
+
+
+# `True` if the user is running code in an iPython session.
+# This is required to be able to use the viewer.
+_IS_IPYTHON_SESSION = None
 
 
 class Singleton(type):
@@ -18,27 +23,31 @@ class Singleton(type):
         return cls._instances[cls]
 
 
-class Viewport(IFrame):
-    def __init__(
-        self,
-        src: str,
-        width: Union[int, str],
-        height: Union[int, str],
-        extras: Iterable[str] = None,
-        axes=None,
-        **kwargs,
-    ):
-        self.axes = axes
-        super().__init__(src, width, height, extras, **kwargs)
+def is_ipython_session() -> bool:
+    """Returns if the python is an iPython session.
 
-    def _repr_html_(self):
-        # TODO: see if we can move side-effect out of this method
-        if self.axes:
-            self.axes.handshake = asyncio.Future()
-            task = asyncio.create_task(self.axes._wait_for_handshake())
-            task.add_done_callback(self.axes._handshake_callback)
+    Adapted from
+    https://discourse.jupyter.org/t/find-out-if-my-code-runs-inside-a-notebook-or-jupyter-lab/6935/3
+    """
+    global _IS_IPYTHON_SESSION
+    if _IS_IPYTHON_SESSION is not None:
+        return _IS_IPYTHON_SESSION
 
-        return super()._repr_html_()
+    is_ipython_session = None
+    try:
+        from IPython import get_ipython
 
-    def __repr__(self):
-        return f"Viewport({self.src})"
+        ip = get_ipython()
+        is_ipython_session = ip is not None
+    except ImportError:
+        # iPython is not installed
+        is_ipython_session = False
+    _IS_IPYTHON_SESSION = is_ipython_session
+    return _IS_IPYTHON_SESSION
+
+
+def handle_task_exception(task: "asyncio.Task"):
+    """Handle exceptions in tasks."""
+
+    if task.exception() is not None:
+        logger.error(f"Task `{task}` raised an exception: {task.exception()}")
