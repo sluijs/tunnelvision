@@ -3,7 +3,7 @@
 Tunnelvision is an experimental tensor viewer for IPython environments based on Voxel.
 
 ## Installation
-Tunnelvision requires Python 3.7+. Wheels are _only_ available for MacOS (x86_64) and Linux for now.
+Tunnelvision requires Python 3.7+. Binary wheels are available for MacOS (x86_64/arm64) and Linux.
 
 To install Tunnelvision, run:
 
