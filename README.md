@@ -30,6 +30,7 @@ ax.imshow(arr2, cmap="seg")
 ax.show()
 ```
 
+## Medical Imaging
 [Pyvoxel](https://github.com/pyvoxel/pyvoxel) has support for tunnelvision as well, which allows you to plot images with their correct orientation and spacing, without having to manually set those in the configuration:
 
 ```python
