@@ -171,7 +171,8 @@ def imshow(x: np.ndarray, ax: Axes = None, **kwargs):
     if ax is None:
         ax = Axes()
 
-    return ax.imshow(x=x, **kwargs)
+    ax.imshow(x=x, **kwargs)
+    return ax
 
 
 def show(x: np.generic, ax: Axes = None, **kwargs):
