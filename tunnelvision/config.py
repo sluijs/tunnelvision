@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Optional
 
 import yaml
 
@@ -24,7 +23,7 @@ class Config(metaclass=Singleton):
 
     # The port to use for tunnelvision-server, defaults to the first available port.
     # NB: set this port when working with VS Code Remote.
-    port: Optional[int] = None
+    port: int = 27791
 
     # How long to wait for the front-end to respond before giving up.
     timeout: int = 5

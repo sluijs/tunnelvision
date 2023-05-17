@@ -25,9 +25,9 @@ class Axes:
             raise RuntimeError("Tunnelvision can only be used in an IPython session.")
 
         if not state.is_running:
+            state.websocket = None
             auto_start()
 
-        if state.websocket is None:
             task = asyncio.create_task(auto_connect())
             task.add_done_callback(handle_task_exception)
 
@@ -73,8 +73,8 @@ class Axes:
         if x.ndim != 5:
             raise ValueError("Only 5-dimensional arrays are supported [BxZxHxWxC].")
 
-        if state.process.poll() is not None:
-            raise RuntimeError("Server has stopped running after Axes creation.")
+        # if state.process.poll() is not None:
+        #     raise RuntimeError("Server has stopped running after Axes creation.")
 
         if cmap is not None:
             # TODO: Add support for other built-in colormaps, random colormaps, and custom colormaps

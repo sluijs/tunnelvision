@@ -3,7 +3,6 @@ import atexit
 import json
 import os
 import select
-import socket
 import subprocess
 import threading
 
@@ -18,7 +17,7 @@ __all__ = ["auto_start", "start", "connect", "wait_for_handshake", "send_message
 
 def auto_start():
     server_path = os.path.join(ROOT_DIR, "bin", "tunnelvision-server")
-    state.port = config.port if isinstance(config.port, int) else _get_first_available_port()
+    state.port = config.port
     dist_path = os.path.join(ROOT_DIR, "bin", "dist")
 
     start(server_path, state.port, dist_path)
@@ -39,11 +38,6 @@ def start(
     Returns:
         subprocess.Popen: The process object for the tunnelvision-server.
     """
-    if isinstance(state.process, subprocess.Popen):
-        print("Retrying to start the tunnelvision-server...")
-        state.process.terminate()
-        state.process.wait()
-
     state.port = port
 
     state.process = subprocess.Popen(
@@ -141,41 +135,6 @@ def log_server_output(process: subprocess.Popen):
     stdout_file.flush()
     process.wait()
     stdout_file.close()
-
-
-def ping():
-    request = b"HEAD / HTTP/1.1\r\nHost: server-url\r\n\r\n"
-    with socket.create_connection((config.hostname, state.port), timeout=config.timeout) as sock:
-        sock.sendall(request)
-        response = sock.recv(1024)
-        if response:
-            return True
-        else:
-            raise TimeoutError(f"Server did not respond in {config.timeout} seconds.")
-
-
-def _get_first_available_port(start: int = 49152, end: int = 65535) -> int:
-    """Gets the first open port in a specified range of port numbers. Taken
-    from https://github.com/gradio-app/gradio/blob/main/gradio/networking.py.
-    More reading:
-    https://stackoverflow.com/questions/19196105/how-to-check-if-a-network-port-is-open
-    Args:
-        start: the start value in the range of port numbers
-        end: end (exclusive) value in the range of port numbers,
-            should be greater than `start`
-    Returns:
-        port: the first open port in the range
-    """
-    for port in range(start, end):
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  # create a socket object
-            _ = s.bind((config.hostname, port))  # Bind to the port  # noqa: F841
-            s.close()
-            return port
-        except OSError:
-            pass
-
-    raise OSError("All ports from {} to {} are in use. Please close a port.".format(start, end - 1))
 
 
 def _close():
