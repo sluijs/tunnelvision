@@ -3,6 +3,7 @@ import subprocess
 import threading
 from dataclasses import dataclass
 
+import requests
 import websockets
 
 from tunnelvision.config import config
@@ -43,6 +44,15 @@ class State(metaclass=Singleton):
             if self.process.poll() is None:
                 return True
 
+        return self.ping()
+
+    def ping(self) -> bool:
+        if isinstance(self.port, int):
+            try:
+                with requests.get(f"http://{self.hostname}:{self.port}/api/ping") as res:
+                    return res.json().get("success", False)
+            except Exception:  # ConnectionRefusedError
+                return False
         return False
 
 
