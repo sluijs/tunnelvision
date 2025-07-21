@@ -14,7 +14,6 @@ dependencies = [
     "shortuuid==1.0.13",
     "ipykernel>=6.29.5",
     "requests",
-    "pyvoxel>=0.0.2",
 ]
 
 [build-system]
