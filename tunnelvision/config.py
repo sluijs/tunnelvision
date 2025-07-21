@@ -23,10 +23,10 @@ class Config(metaclass=Singleton):
 
     # The port to use for tunnelvision-server, defaults to the first available port.
     # NB: set this port when working with VS Code Remote.
-    port: int = 27791
+    port: int = 8765
 
     # How long to wait for the front-end to respond before giving up.
-    timeout: int = 5
+    timeout: int = 15
 
     # Paths to the stdout and stderr logs of tunnelvision-server.
     log_stdout: str = os.path.join(os.path.expanduser("~"), ".cache", "tunnelvision", "server.out")
