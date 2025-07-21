@@ -140,7 +140,7 @@ class Axes:
     async def _consume(self):
         """Consume the queue."""
 
-        while state.websocket.open and not self._queue.empty():
+        while not self._queue.empty():
             task = await self._queue.get()
             await task
 

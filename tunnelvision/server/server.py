@@ -92,11 +92,11 @@ async def wait_for_handshake(task: asyncio.Task):
         raise Exception("Server is not running, run `start()` first.")
 
     await asyncio.wait_for(task, state.timeout)
-    if not isinstance(state.websocket, websockets.WebSocketClientProtocol):
+    if not isinstance(state.websocket, websockets.ClientConnection):
         raise Exception("Websocket client not connected, run `connect()` first.")
 
-    while not state.websocket.closed:
-        try:
+    try:
+        while True:
             msg = await state.websocket.recv()
             msg = json.loads(msg)
 
@@ -105,19 +105,17 @@ async def wait_for_handshake(task: asyncio.Task):
                     state.handshakes[msg["hash"]] = asyncio.Future()
 
                 state.handshakes[msg["hash"]].set_result(msg["connected"])
-
-        except Exception:
-            pass
+    except websockets.ConnectionClosedError:
+        raise RuntimeError("Websocket connection closed unexpectedly.")
 
 
 async def send_message(message):
     """Send a text or binary message to the websocket."""
 
-    if isinstance(state.websocket, websockets.WebSocketClientProtocol) and state.websocket.open:
+    try:
         await state.websocket.send(message)
-    else:
-        raise RuntimeError("Could not send message, websocket is not open.")
-
+    except websockets.ConnectionClosedError:
+        raise RuntimeError("Could not send message, websocket is closed.")
 
 def log_server_output(process: subprocess.Popen):
     if config.log_stdout:
