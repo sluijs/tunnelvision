@@ -49,4 +49,4 @@ port: 1337
 ```
 
 ## Debug
-Typically, problems will revolve around the WebSockets connection. Make sure your port is forwarded when working [remote](#VS-Code-Remote). Make sure the handshake between the client and server was succesfull by inspecting the `state.websocket` object. One can use `ps aux | grep tunnelvision` to inspect whether the server is running. Logs for the server are stored in `~/.cache/tunnelvision`. 
+Typically, problems will revolve around the WebSockets connection. Make sure your port is forwarded when working [remote](#VS-Code-Remote). Make sure the handshake between the client and server was successful by inspecting the `state.websocket` object. One can use `ps aux | grep tunnelvision` to inspect whether the server is running. Logs for the server are stored in `~/.cache/tunnelvision`. 
