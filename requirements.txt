@@ -1,8 +1,9 @@
-dataclasses>=0.6
+dataclasses==0.6
 numpy
 packaging
-PyYAML>=5.4.1
-tabulate
-termcolor
-websockets
-shortuuid
+PyYAML==6.0.2
+tabulate==0.9.0
+termcolor==2.5.0
+shortuuid==1.0.13
+websockets==15.0.1
+requests
